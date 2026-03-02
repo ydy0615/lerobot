@@ -51,6 +51,23 @@ def main() -> None:
     }  # id=0 为占位，后面会被覆盖
 
     # 初始化总线（不使用校准文件，因为我们只想写入 ID）
+    # 先扫描端口获取实际的 motor ID，确保只连接到唯一的电机
+    found = FeetechMotorsBus.scan_port(args.port, calibration=None)
+    # `scan_port` 返回 {baudrate: [ids...]}, 取所有发现的 ID
+    ids = sorted({id_ for ids in found.values() for id_ in ids})
+    if len(ids) != 1:
+        raise RuntimeError(
+            f"期望在端口 {args.port} 上只连接到一个电机，但检测到 IDs={ids}。请检查连接或手动指定 motor ID。"
+        )
+    actual_id = ids[0]
+
+    motor_cfg = {
+        motor_name: Motor(
+            id=actual_id,
+            model=args.model,
+            norm_mode=MotorNormMode.RANGE_0_100,
+        )
+    }
     bus = FeetechMotorsBus(port=args.port, motors=motor_cfg, calibration=None)
     # 必须先连接才能进行读写操作
     bus.connect()
