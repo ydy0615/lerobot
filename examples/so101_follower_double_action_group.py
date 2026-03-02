@@ -103,6 +103,11 @@ def move_to_pose(pose: List[float], duration: float = 2.0):
     # 简单阻塞，确保动作完成后再继续
     time.sleep(duration)
 
+    # 读取并打印当前关节位置（可选调试信息）
+    obs = robot.get_observation()
+    joint_positions = {k: v for k, v in obs.items() if k.endswith('.pos')}
+    print("[INFO] 当前关节位置:", joint_positions)
+
 # ----------------------------------------------------------------------
 # 5️⃣ 主流程
 # ----------------------------------------------------------------------

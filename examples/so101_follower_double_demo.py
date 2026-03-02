@@ -38,8 +38,9 @@ def main():
     # robot.calibrate()
 
     # 3. 示例操作：获取并打印关节位置
-    positions = robot.get_joint_positions()
-    print("[INFO] 当前关节位置:", positions)
+    positions = robot.get_observation()
+    joint_positions = {k: v for k, v in positions.items() if k.endswith('.pos')}
+    print("[INFO] 当前关节位置:", joint_positions)
 
     # 4. 断开连接
     print("[INFO] 正在断开连接")
