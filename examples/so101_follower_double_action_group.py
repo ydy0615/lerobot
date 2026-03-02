@@ -22,7 +22,7 @@ from lerobot.robots.so101_follower_double import (
 # ----------------------------------------------------------------------
 # 1️⃣ 配置（请自行替换端口和机器人 ID）
 # ----------------------------------------------------------------------
-PORT = "/dev/tty.usbmodemXXX"          # 使用 ``lerobot-find-port`` 获得的端口
+PORT = "/dev/f-arms"          # 使用 ``lerobot-find-port`` 获得的端口
 ROBOT_ID = "my_follower_double"        # 为机器人取的唯一标识
 
 config = SO101FollowerDoubleConfig(
