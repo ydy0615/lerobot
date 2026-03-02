@@ -52,7 +52,8 @@ def main() -> None:
 
     # 初始化总线（不使用校准文件，因为我们只想写入 ID）
     bus = FeetechMotorsBus(port=args.port, motors=motor_cfg, calibration=None)
-
+    # 必须先连接才能进行读写操作
+    bus.connect()
     # 1️⃣ 写入新的 ID
     bus.write("ID", motor_name, args.new_id)
     logger.info(f"已写入新 ID {args.new_id} 到舵机（模型 {args.model}）")
@@ -90,6 +91,8 @@ def main() -> None:
     # 5️⃣ 恢复扭矩状态（防止舵机保持锁定）
     bus.enable_torque([motor_name])
     bus.disable_torque([motor_name])
+    # 结束后断开连接，确保端口被释放
+    bus.disconnect()
 
 
 if __name__ == "__main__":
