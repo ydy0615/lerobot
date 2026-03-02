@@ -7,7 +7,7 @@ import argparse
 import logging
 
 from lerobot.motors.feetech import FeetechMotorsBus
-from lerobot.motors import Motor, MotorCalibration
+from lerobot.motors import Motor, MotorCalibration, MotorNormMode
 
 logger = logging.getLogger(__name__)
 
@@ -42,7 +42,13 @@ def main() -> None:
 
     # 只创建一个 motor，键名随意（后面不再需要外部指定）
     motor_name = "motor"
-    motor_cfg = {motor_name: Motor(id=0, model=args.model)}  # id=0 为占位，后面会被覆盖
+    motor_cfg = {
+        motor_name: Motor(
+            id=0,
+            model=args.model,
+            norm_mode=MotorNormMode.RANGE_0_100,
+        )
+    }  # id=0 为占位，后面会被覆盖
 
     # 初始化总线（不使用校准文件，因为我们只想写入 ID）
     bus = FeetechMotorsBus(port=args.port, motors=motor_cfg, calibration=None)
