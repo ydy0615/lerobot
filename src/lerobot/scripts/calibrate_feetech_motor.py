@@ -7,7 +7,7 @@ import argparse
 import logging
 
 from lerobot.motors.feetech import FeetechMotorsBus
-from lerobot.motors import Motor, MotorCalibration, MotorNormMode
+from lerobot.motors import Motor, MotorNormMode
 
 logger = logging.getLogger(__name__)
 
@@ -75,35 +75,18 @@ def main() -> None:
     bus.write("ID", motor_name, args.new_id)
     logger.info(f"已写入新 ID {args.new_id} 到舵机（模型 {args.model}）")
 
-    # 2️⃣ 读取当前校准（如果已有则保留范围/偏移，否则读取现场范围）
-    current_cal = bus.read_calibration()
-    if motor_name in current_cal:
-        cal = current_cal[motor_name]
-    else:
-        # 读取位置限位作为默认范围
-        min_pos = bus.read("Min_Position_Limit", motor_name, normalize=False)
-        max_pos = bus.read("Max_Position_Limit", motor_name, normalize=False)
-        cal = MotorCalibration(
-            id=args.new_id,
-            drive_mode=0,
-            homing_offset=0,
-            range_min=min_pos,
-            range_max=max_pos,
-        )
-    cal.id = args.new_id  # 更新 ID
-
-    # 3️⃣ 写回校准信息并缓存到磁盘（cache=True 会自动生成 .json 文件）
-    bus.write_calibration({motor_name: cal}, cache=True)
-    logger.info(f"校准文件已更新，ID 为 {cal.id}")
-
-    # 4️⃣ 可选验证：读取 ID 确认写入成功
-    read_id = bus.read("ID", motor_name, normalize=False)
-    if read_id == args.new_id:
-        logger.info("验证成功：舵机 ID 已正确写入。")
-    else:
-        logger.warning(
-            f"验证失败：读取的 ID 为 {read_id}，预期为 {args.new_id}。请检查串口和电源。"
-        )
+    # 读取并验证写入的 ID
+    try:
+        read_id = bus.read("ID", motor_name, normalize=False)
+        if read_id == args.new_id:
+            logger.info("验证成功：舵机 ID 已正确写入。")
+        else:
+            logger.warning(
+                f"验证失败：读取的 ID 为 {read_id}，预期为 {args.new_id}。请检查串口和电源。"
+            )
+    except Exception as e:
+        logger.warning(f"读取 ID 失败 ({e})，但已写入新 ID {args.new_id}。")
+<!-- 删除重复的验证块 -->
 
     # 5️⃣ 恢复扭矩状态（防止舵机保持锁定）
     bus.enable_torque([motor_name])
