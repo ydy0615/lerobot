@@ -45,17 +45,16 @@ JOINT_ORDER = [
     "right_gripper",
 ]
 
-POSE_HOME = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
-POSE_RAISE = [0, 30, -45, 0, 0, 0, 0, 30, -45, 0, 0, 0]
-POSE_EXTEND = [45, 0, -30, 0, 0, 10, -45, 0, -30, 0, 0, 10]
-POSE_CLOSE = [45, 0, -30, 0, 0, 80, -45, 0, -30, 0, 0, 80]
+POSE_HOME = [-8.6,-99.7,98.8,67.8,-17.2,5.4,6.2,-99.3,97.3,64.1,6.8,0.4]
+POSE_RAISE = [-8.6,-77.1,55.1,36.8,-17.2,5.6,6.3,-71.2,52.9,33.6,6.7,0.4]
+POSE_EXTEND = [-8.1,-8.5,-76.7,3.3,-17.6,63.3,5.7,-4.0,-83.0,-5.4,6.6,52.7]
+POSE_CLOSE = [-8.3,-100.0,98.6,77.9,-16.8,3.3,5.8,-99.6,96.8,74.7,7.0,1.0]
 
 TRAJECTORY = [
     ("home", POSE_HOME, 1.0),
     ("raise", POSE_RAISE, 2.0),
-    ("extend", POSE_EXTEND, 0.5),
-    ("close_gripper", POSE_CLOSE, 3.0),
-    ("return_home", POSE_HOME, 4.5),
+    ("extend", POSE_EXTEND, 2.5),
+    ("return_home", POSE_HOME, 1.5),
 ]
 
 
