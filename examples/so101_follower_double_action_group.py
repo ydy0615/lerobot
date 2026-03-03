@@ -2,15 +2,32 @@
 """
 Run a simple action-group trajectory on SO101FollowerDouble.
 
-Example:
+Example (single run):
     python examples/so101_follower_double_action_group.py --port COM5 --robot-id demo
+
+Example (API server on port 8081):
+    python examples/so101_follower_double_action_group.py --serve --port COM5 --robot-id demo --api-port 8081
+
+Trigger one action-group run (blocking until done):
+    curl -X POST http://127.0.0.1:8081/action-group/run
+
+Check service status:
+    curl http://127.0.0.1:8081/action-group/status
 """
 
 from __future__ import annotations
 
 import argparse
+import threading
 import time
+from collections.abc import Iterator
+from contextlib import contextmanager
+from dataclasses import dataclass
+from typing import Any
 
+from fastapi import FastAPI
+from fastapi.responses import JSONResponse
+import uvicorn
 from lerobot.robots.so101_follower_double import SO101FollowerDouble, SO101FollowerDoubleConfig
 
 JOINT_ORDER = [
@@ -34,11 +51,11 @@ POSE_EXTEND = [45, 0, -30, 0, 0, 10, -45, 0, -30, 0, 0, 10]
 POSE_CLOSE = [45, 0, -30, 0, 0, 80, -45, 0, -30, 0, 0, 80]
 
 TRAJECTORY = [
-    ("home", POSE_HOME),
-    ("raise", POSE_RAISE),
-    ("extend", POSE_EXTEND),
-    ("close_gripper", POSE_CLOSE),
-    ("return_home", POSE_HOME),
+    ("home", POSE_HOME, 1.0),
+    ("raise", POSE_RAISE, 2.0),
+    ("extend", POSE_EXTEND, 0.5),
+    ("close_gripper", POSE_CLOSE, 3.0),
+    ("return_home", POSE_HOME, 4.5),
 ]
 
 
@@ -46,23 +63,9 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="SO-101 follower double action-group demo.")
     parser.add_argument("--port", required=True, help="Robot serial port, e.g. COM5 or /dev/ttyUSB0.")
     parser.add_argument("--robot-id", default="my_follower_double", help="Robot identifier string.")
-    parser.add_argument(
-        "--hold-seconds",
-        type=float,
-        default=3.0,
-        help="Seconds to hold after each action step (default: 3.0).",
-    )
-    parser.add_argument(
-        "--repeats",
-        type=int,
-        default=1,
-        help="How many times to repeat the full trajectory (default: 1).",
-    )
-    parser.add_argument(
-        "--calibrate-on-connect",
-        action="store_true",
-        help="Run robot calibration during connect().",
-    )
+    parser.add_argument("--serve", action="store_true", help="Run FastAPI service instead of one-shot run.")
+    parser.add_argument("--host", default="0.0.0.0", help="FastAPI bind host in service mode.")
+    parser.add_argument("--api-port", type=int, default=8081, help="FastAPI bind port in service mode.")
     return parser.parse_args()
 
 
@@ -84,45 +87,142 @@ def print_joint_positions(robot: SO101FollowerDouble) -> None:
     print("[state] " + ", ".join(values))
 
 
-def run_trajectory(robot: SO101FollowerDouble, hold_seconds: float, repeats: int) -> None:
-    if hold_seconds < 0:
-        raise ValueError(f"--hold-seconds must be >= 0. Got {hold_seconds}.")
-    if repeats < 1:
-        raise ValueError(f"--repeats must be >= 1. Got {repeats}.")
+def run_trajectory(robot: SO101FollowerDouble) -> None:
+    total_steps = len(TRAJECTORY)
+    for step_index, (name, pose, hold_seconds) in enumerate(TRAJECTORY, start=1):
+        if hold_seconds < 0:
+            raise ValueError(f"hold_seconds must be >= 0. Got {hold_seconds} for step '{name}'.")
+        print(f"[run] step {step_index}/{total_steps}: {name} (hold={hold_seconds:.2f}s)")
+        action = pose_to_action(pose)
+        robot.send_action(action)
+        time.sleep(hold_seconds)
+        print_joint_positions(robot)
 
-    total_steps = len(TRAJECTORY) * repeats
-    step_index = 0
-    for cycle in range(1, repeats + 1):
-        print(f"[run] cycle {cycle}/{repeats}")
-        for name, pose in TRAJECTORY:
-            step_index += 1
-            print(f"[run] step {step_index}/{total_steps}: {name}")
-            action = pose_to_action(pose)
-            robot.send_action(action)
-            time.sleep(hold_seconds)
-            print_joint_positions(robot)
+
+@dataclass
+class ServiceState:
+    robot: SO101FollowerDouble
+    run_lock: threading.Lock
+    last_result: str = "idle"
+
+
+@contextmanager
+def try_run_lock(lock: threading.Lock) -> Iterator[bool]:
+    acquired = lock.acquire(blocking=False)
+    try:
+        yield acquired
+    finally:
+        if acquired:
+            lock.release()
+
+
+def create_robot(port: str, robot_id: str) -> SO101FollowerDouble:
+    return SO101FollowerDouble(
+        SO101FollowerDoubleConfig(
+            port=port,
+            id=robot_id,
+        )
+    )
+
+
+def create_app(port: str, robot_id: str) -> FastAPI:
+    app = FastAPI(title="SO101 Follower Double Action Group")
+    state = ServiceState(
+        robot=create_robot(port, robot_id),
+        run_lock=threading.Lock(),
+    )
+    app.state.service = state
+
+    @app.on_event("startup")
+    def on_startup() -> None:
+        print(f"[connect] port={port}, robot_id={robot_id}")
+        state.robot.connect(calibrate=False)
+        state.robot.bus.disable_torque()
+        state.last_result = "idle"
+        print("[ready] robot connected and torque disabled.")
+
+    @app.on_event("shutdown")
+    def on_shutdown() -> None:
+        if state.robot.is_connected:
+            print("[disconnect] closing robot connection...")
+            state.robot.disconnect()
+
+    @app.get("/action-group/status")
+    def get_status() -> dict[str, Any]:
+        return {
+            "running": state.run_lock.locked(),
+            "last_result": state.last_result,
+        }
+
+    @app.post("/action-group/run")
+    def run_action_group() -> JSONResponse:
+        with try_run_lock(state.run_lock) as acquired:
+            if not acquired:
+                return JSONResponse(
+                    status_code=409,
+                    content={
+                        "accepted": False,
+                        "status": "busy",
+                        "detail": "previous action-group is still running",
+                    },
+                )
+
+            start = time.perf_counter()
+            state.last_result = "running"
+            try:
+                state.robot.bus.enable_torque()
+                run_trajectory(state.robot)
+                duration_s = time.perf_counter() - start
+                state.last_result = "completed"
+                return JSONResponse(
+                    status_code=200,
+                    content={
+                        "accepted": True,
+                        "status": "completed",
+                        "steps": len(TRAJECTORY),
+                        "duration_s": round(duration_s, 2),
+                    },
+                )
+            except Exception as exc:
+                state.last_result = "failed"
+                return JSONResponse(
+                    status_code=500,
+                    content={
+                        "accepted": True,
+                        "status": "failed",
+                        "detail": str(exc),
+                    },
+                )
+            finally:
+                try:
+                    state.robot.bus.disable_torque()
+                except Exception as disable_exc:
+                    print(f"[warn] failed to disable torque after run: {disable_exc}")
+
+    return app
+
+
+def run_api_server(args: argparse.Namespace) -> int:
+    app = create_app(args.port, args.robot_id)
+    uvicorn.run(app, host=args.host, port=args.api_port, workers=1)
+    return 0
 
 
 def main() -> int:
     args = parse_args()
 
-    robot = SO101FollowerDouble(
-        SO101FollowerDoubleConfig(
-            port=args.port,
-            id=args.robot_id,
-        )
-    )
+    if args.serve:
+        return run_api_server(args)
+
+    robot = create_robot(args.port, args.robot_id)
 
     connected = False
     try:
-        print(
-            "[connect] "
-            f"port={args.port}, robot_id={args.robot_id}, calibrate={args.calibrate_on_connect}"
-        )
-        robot.connect(calibrate=args.calibrate_on_connect)
+        print("[connect] " f"port={args.port}, robot_id={args.robot_id}")
+        robot.connect(calibrate=False)
         connected = True
 
-        run_trajectory(robot, hold_seconds=args.hold_seconds, repeats=args.repeats)
+        run_trajectory(robot)
         print("[done] trajectory complete.")
         return 0
     finally:
