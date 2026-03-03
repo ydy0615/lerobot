@@ -5,9 +5,11 @@
 
 import argparse
 import logging
+import time
 
 from lerobot.motors.feetech import FeetechMotorsBus
 from lerobot.motors import Motor, MotorNormMode
+from lerobot.motors.motors_bus import get_address
 
 logger = logging.getLogger(__name__)
 
@@ -49,8 +51,17 @@ def main() -> None:
 
     bus = FeetechMotorsBus(port=args.port, motors=motor_cfg, calibration=None)
     bus.connect()
-    bus.write("ID", motor_name, args.new_id)
-    logger.info(f"已写入新 ID {args.new_id}（模型 {args.model}）")
+    # 关闭扭矩以允许写入 EEPROM
+    bus.disable_torque([motor_name])
+    # 使用 Reg Write（持久化写入）写入 ID
+    addr, length = get_address(bus.model_ctrl_table, args.model, "ID")
+    data = bus._serialize_data(args.new_id, length)
+    bus.packet_handler.regWriteTxOnly(bus.port_handler, bus.motors[motor_name].id, addr, length, data)
+    # 提交写入
+    bus.packet_handler.action(bus.port_handler, bus.motors[motor_name].id)
+    # 等待 EEPROM 写入完成（约 0.7 秒）
+    time.sleep(0.7)
+    logger.info(f"已永久写入新 ID {args.new_id}（模型 {args.model}）")
     bus.disconnect()
 
 if __name__ == "__main__":
