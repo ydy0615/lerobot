@@ -86,11 +86,7 @@ def main() -> None:
             )
     except Exception as e:
         logger.warning(f"读取 ID 失败 ({e})，但已写入新 ID {args.new_id}。")
-<!-- 删除重复的验证块 -->
 
-    # 5️⃣ 恢复扭矩状态（防止舵机保持锁定）
-    bus.enable_torque([motor_name])
-    bus.disable_torque([motor_name])
     # 结束后断开连接，确保端口被释放
     bus.disconnect()
 
