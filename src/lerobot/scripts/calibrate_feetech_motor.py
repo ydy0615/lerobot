@@ -75,22 +75,8 @@ def main() -> None:
     bus.write("ID", motor_name, args.new_id)
     logger.info(f"已写入新 ID {args.new_id} 到舵机（模型 {args.model}）")
 
-    # 读取并验证写入的 ID
-    try:
-        read_id = bus.read("ID", motor_name, normalize=False)
-        if read_id == args.new_id:
-            logger.info("验证成功：舵机 ID 已正确写入。")
-        else:
-            logger.warning(
-                f"验证失败：读取的 ID 为 {read_id}，预期为 {args.new_id}。请检查串口和电源。"
-            )
-    except Exception as e:
-        logger.warning(f"读取 ID 失败 ({e})，但已写入新 ID {args.new_id}。")
-<!-- 删除重复的验证块 -->
+    # 已写入新 ID，后续如需验证请自行读取
 
-    # 5️⃣ 恢复扭矩状态（防止舵机保持锁定）
-    bus.enable_torque([motor_name])
-    bus.disable_torque([motor_name])
     # 结束后断开连接，确保端口被释放
     bus.disconnect()
 
