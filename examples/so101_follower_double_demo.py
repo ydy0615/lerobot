@@ -14,8 +14,8 @@ from lerobot.robots.so101_follower_double import (
 # --------------------------------------------------------------
 # 需要自行替换的配置
 # --------------------------------------------------------------
-PORT = "/dev/tty.usbmodemXXX"   # 使用 `lerobot-find-port` 获取的端口
-ROBOT_ID = "my_follower_double"  # 为机器人取一个唯一名称
+PORT = "/dev/f-arms"   # 使用 `lerobot-find-port` 获取的端口
+ROBOT_ID = "my_double_follower_arm"  # 为机器人取一个唯一名称
 # --------------------------------------------------------------
 
 # 创建机器人配置
